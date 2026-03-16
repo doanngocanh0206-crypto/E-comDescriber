@@ -1,10 +1,15 @@
 import { GoogleGenAI } from "@google/genai";
 import { ProductInput, ProductDescription } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-
 export async function generateProductDescriptions(input: ProductInput, count: number = 3): Promise<ProductDescription[]> {
-  const model = "gemini-3.1-pro-preview";
+  const apiKey = process.env.GEMINI_API_KEY;
+  
+  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+    throw new Error("API Key chưa được cấu hình. Vui lòng kiểm tra lại cài đặt Secrets.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  const model = "gemini-flash-latest";
   
   const prompt = `
     Bạn là một chuyên gia Copywriter E-commerce và chuyên gia SEO.
@@ -36,24 +41,44 @@ export async function generateProductDescriptions(input: ProductInput, count: nu
       ...
     ]
     
-    Lưu ý: Chỉ trả về JSON, không kèm theo văn bản giải thích nào khác.
+    Lưu ý: Chỉ trả về JSON hợp lệ. Không bao gồm markdown backticks (\`\`\`json) hay bất kỳ văn bản nào khác ngoài JSON.
   `;
 
   try {
     const response = await ai.models.generateContent({
       model,
-      contents: prompt,
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
       },
     });
 
-    const text = response.text;
-    if (!text) throw new Error("Không nhận được phản hồi từ AI");
+    let text = response.text;
+    if (!text) {
+      console.error("Empty response from Gemini");
+      throw new Error("Không nhận được phản hồi từ AI. Vui lòng thử lại.");
+    }
     
-    return JSON.parse(text);
-  } catch (error) {
+    // Clean potential markdown formatting
+    text = text.replace(/^```json\n?/, "").replace(/\n?```$/, "").trim();
+    
+    try {
+      return JSON.parse(text);
+    } catch (parseError) {
+      console.error("JSON Parse Error. Raw text:", text);
+      throw new Error("Dữ liệu trả về từ AI không đúng định dạng JSON. Vui lòng thử lại.");
+    }
+  } catch (error: any) {
     console.error("Error generating descriptions:", error);
-    throw error;
+    
+    if (error?.message?.includes("API key not valid")) {
+      throw new Error("API Key không hợp lệ. Vui lòng kiểm tra lại trong phần Settings.");
+    }
+    
+    if (error?.message?.includes("quota")) {
+      throw new Error("Đã hết hạn mức sử dụng AI (Quota exceeded). Vui lòng thử lại sau.");
+    }
+
+    throw new Error(error?.message || "Có lỗi xảy ra khi kết nối với AI. Vui lòng thử lại.");
   }
 }

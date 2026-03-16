@@ -21,8 +21,9 @@ export default function App() {
       setTimeout(() => {
         document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
-    } catch (err) {
-      setError('Có lỗi xảy ra khi tạo mô tả. Vui lòng thử lại sau.');
+    } catch (err: any) {
+      const errorMessage = err?.message || 'Có lỗi xảy ra khi tạo mô tả. Vui lòng thử lại sau.';
+      setError(errorMessage);
       console.error(err);
     } finally {
       setIsLoading(false);
